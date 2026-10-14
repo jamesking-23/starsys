@@ -6,7 +6,7 @@
     <title>Starsys — Financial Reporting Platform</title>
     <script>
         (function(){ try{ var t=localStorage.getItem('theme'); if(t==='dark' || (!t && window.matchMedia('(prefers-color-scheme: dark)').matches)){ document.documentElement.classList.add('dark'); } }catch(e){} })();
-        (function(){ try{ var f=parseInt(localStorage.getItem('fontScale'),10); if(f>=100 && f<=150){ document.documentElement.style.fontSize=f+'%'; } }catch(e){} })();
+        (function(){ try{ var f=parseInt(localStorage.getItem('fontScale'),10); if(f>=100){ document.documentElement.style.fontSize=Math.min(f,120)+'%'; } }catch(e){} })();
     </script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
@@ -1012,7 +1012,7 @@
                                     </div>
                                     <div class="flex items-center gap-3">
                                         <span class="text-xs text-ink-500 dark:text-ink-400 select-none" aria-hidden="true">A</span>
-                                        <input id="fontSizeSlider" class="fs-range" type="range" min="100" max="150" step="5" value="100" aria-label="Text size" aria-valuetext="100 percent">
+                                        <input id="fontSizeSlider" class="fs-range" type="range" min="100" max="120" step="5" value="100" aria-label="Text size" aria-valuetext="100 percent">
                                         <span class="text-xl text-ink-500 dark:text-ink-400 select-none leading-none" aria-hidden="true">A</span>
                                     </div>
                                     <p class="text-[0.6875rem] text-ink-500 dark:text-ink-400 mt-3">Make text larger across the whole app. Applies instantly and is remembered on this device.</p>
@@ -1309,7 +1309,7 @@
                     var sl=document.getElementById('fontSizeSlider'), val=document.getElementById('fontSizeValue'), rs=document.getElementById('fontSizeReset');
                     if(!sl) return;
                     function applyScale(v, persist){
-                        v=Math.max(100, Math.min(150, parseInt(v,10)||100));
+                        v=Math.max(100, Math.min(120, parseInt(v,10)||100));
                         document.documentElement.style.fontSize = v===100 ? '' : v+'%';
                         sl.value=v; val.textContent=v+'%'; sl.setAttribute('aria-valuetext', v+' percent');
                         if(persist){ try{ if(v===100) localStorage.removeItem('fontScale'); else localStorage.setItem('fontScale', String(v)); }catch(e){} }
