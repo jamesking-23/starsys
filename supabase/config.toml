@@ -1,0 +1,23 @@
+# Supabase CLI configuration for local development (`supabase start`).
+# Hosted project: starsys-financial-reporting (eu-west-1). Set your own project ref with
+#   supabase link --project-ref <your-project-ref>
+project_id = "starsys"
+
+[api]
+enabled = true
+schemas = ["public"]
+extra_search_path = ["public", "extensions"]
+
+[db]
+major_version = 17
+
+[auth]
+enabled = true
+# Email sign-up with confirmation: the app blocks sign-in until the address is confirmed.
+enable_signup = true
+[auth.email]
+enable_signup = true
+enable_confirmations = true
+
+[realtime]
+enabled = true
