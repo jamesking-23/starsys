@@ -4,8 +4,10 @@ A web platform for collecting, reviewing and exporting monthly financial reports
 other offerings) per church and district, with role-based access, a full audit trail and
 Excel export.
 
-- **Frontend:** a single static file, [`index.html`](index.html) (Tailwind via CDN, Lucide icons,
-  ExcelJS, `supabase-js` v2 loaded from a CDN). No build step.
+- **Frontend:** a Vite-built web app (`index.html` + `src/`), styled with Tailwind CSS (PostCSS),
+  icons from the `lucide` package, `exceljs` for exports and `supabase-js` v2. Fonts are bundled,
+  so nothing is loaded from a CDN.
+- **Desktop:** the same app packaged with Electron as a standalone Windows `.exe`.
 - **Backend:** [Supabase](https://supabase.com) — Postgres, Auth, Row Level Security and Realtime.
   Everything lives in [`supabase/`](supabase/).
 
@@ -22,7 +24,15 @@ Excel export.
 ## Repository layout
 
 ```
-index.html                         The whole frontend
+index.html                         App markup (entry point for Vite)
+src/main.js                        Application logic (Supabase, rendering, exports)
+src/ui.js                          Sidebar, theme toggle, text-size slider, logo
+src/icons.js                       The Lucide icons bundled with the app
+src/styles.css                     Custom CSS + Tailwind layers
+tailwind.config.cjs, postcss.config.cjs, vite.config.js
+electron/main.cjs                  Electron window (desktop app)
+electron-builder.yml               Windows packaging config
+.github/workflows/build-exe.yml    CI: builds the .exe on every push
 supabase/
   config.toml                      Supabase CLI config for local dev
   migrations/                      Schema, functions, RLS, seed, grants (run in order)
@@ -51,6 +61,45 @@ supabase/
 check the caller's role, pin `search_path`, and write to `audit_log`. A trigger on `profiles`
 stops users changing their own `role`, `status` or `last_login`.
 
+## Development
+
+Requires Node.js 20.19+ (22 recommended).
+
+```bash
+npm install
+npm run dev          # web app with hot reload
+npm run build        # production build into dist/
+npm run electron     # build, then open in the desktop shell
+npm run dist:win     # build the Windows .exe into release/ (run on Windows)
+```
+
+Adding an icon: import it in `src/icons.js`, add it to the `icons` object, then use its
+kebab-case name in `<i data-lucide="...">`.
+
+## Windows desktop app (.exe)
+
+Every push to GitHub triggers **Actions → Build Windows EXE**, which produces
+`Starsys-v<version>.exe`, with `<version>` read from `package.json`. Download it from the
+run's **Artifacts** section.
+
+To publish a labelled release:
+
+1. Bump `version` in `package.json` (e.g. `1.0.1`) and commit.
+2. Tag and push: `git tag v1.0.1 && git push origin v1.0.1`.
+3. The workflow checks the tag matches `package.json`, then attaches the `.exe` to a GitHub Release.
+
+Notes:
+- The `.exe` is a **portable** build (one file, no installer) and is **unsigned**, so Windows
+  SmartScreen may warn on first run ("More info → Run anyway"). Buying a code-signing
+  certificate removes the warning. To get a Setup wizard instead, change `target` to `nsis`
+  in `electron-builder.yml`.
+- The app still needs internet to reach Supabase; only the UI, fonts and icons are bundled.
+- Password-reset e-mails open in the user's browser. Host the web build somewhere and set
+  `VITE_PUBLIC_APP_URL` (in a `.env` file at build time) to that address, and add it to
+  Supabase **Auth → URL Configuration → Redirect URLs**.
+- To use your own app icon, add `build/icon.ico` (256×256+) and uncomment the `icon` line in
+  `electron-builder.yml`.
+
 ## Setting it up on a new Supabase project
 
 1. Create a project at supabase.com.
@@ -60,13 +109,14 @@ stops users changing their own `role`, `status` or `last_login`.
    supabase db push
    ```
    or by pasting each file in `supabase/migrations/` into the SQL editor, **in filename order**.
-3. In `index.html`, set `SUPABASE_URL` and `SUPABASE_ANON_KEY` in the `CONFIG` block
+3. In `src/main.js`, set `SUPABASE_URL` and `SUPABASE_ANON_KEY` in the `CONFIG` block
    (Project Settings → API). The anon key is designed to be public; RLS protects the data.
 4. In Supabase Dashboard → Authentication:
-   - set **Site URL** and **Redirect URLs** to wherever you host `index.html`
+   - set **Site URL** and **Redirect URLs** to wherever you host the web build
    - configure a production **SMTP** provider (the built-in mailer is rate limited)
    - enable **leaked password protection** (Auth → Providers → Email → Password security)
-5. Host `index.html` on any static host (GitHub Pages, Netlify, Vercel, Cloudflare Pages).
+5. Run `npm run build` and host the `dist/` folder on any static host (GitHub Pages, Netlify,
+   Vercel, Cloudflare Pages), or distribute the desktop `.exe`.
 6. **Sign up first.** The first account created becomes the `super_admin` automatically
    (`system_config.initialized` flips to `true`). Everyone after that is `audit_user` /
    `pending_approval` until approved.

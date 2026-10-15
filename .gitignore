@@ -12,3 +12,7 @@ Thumbs.db
 .vscode/
 .idea/
 node_modules/
+
+# build output
+dist/
+release/

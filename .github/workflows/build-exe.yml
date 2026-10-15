@@ -1,0 +1,72 @@
+name: Build Windows EXE
+
+# Builds on every push (any branch) and on version tags. Pull-request builds are not needed
+# because every branch push already builds.
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+  workflow_dispatch:
+
+# 'contents: write' is only used to attach the .exe to a GitHub Release on tag pushes.
+permissions:
+  contents: write
+
+concurrency:
+  group: build-exe-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    env:
+      # The build is unsigned; stop electron-builder from hunting for a certificate.
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Read version from package.json
+        id: ver
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Tag must match package.json version (tag pushes only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          if [ "$GITHUB_REF_NAME" != "v${{ steps.ver.outputs.version }}" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match package.json version v${{ steps.ver.outputs.version }}"
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build web app and package Windows .exe
+        run: npm run dist:win
+
+      - name: Confirm the versioned .exe was produced
+        run: |
+          ls -la release
+          test -f "release/Starsys-v${{ steps.ver.outputs.version }}.exe"
+
+      - name: Upload .exe as a build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Starsys-v${{ steps.ver.outputs.version }}-windows
+          path: release/Starsys-v${{ steps.ver.outputs.version }}.exe
+          if-no-files-found: error
+
+      - name: Attach .exe to the GitHub Release (tag pushes only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/Starsys-v${{ steps.ver.outputs.version }}.exe

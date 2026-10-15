@@ -1,0 +1,24 @@
+appId: com.starsys.financialreporting
+productName: Starsys
+copyright: Starsys
+
+directories:
+  output: release
+
+# Only the built web app and the Electron entry point go into the package.
+# (Everything the UI needs is already bundled into dist/, so no node_modules are shipped.)
+files:
+  - dist/**
+  - electron/**
+  - package.json
+
+# Output name carries the version from package.json, e.g. Starsys-v1.0.0.exe
+artifactName: Starsys-v${version}.${ext}
+
+win:
+  # "portable" = one self-contained .exe, no installer. Switch to `nsis` for a Setup wizard.
+  target:
+    - target: portable
+      arch: [x64]
+  # To use your own icon, add build/icon.ico (256x256 or larger) and uncomment:
+  # icon: build/icon.ico
