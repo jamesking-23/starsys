@@ -15,7 +15,7 @@ Excel export.
 
 - Email/password sign-up with email confirmation and **admin approval** before first sign-in
 - Three roles: `audit_user` (enters data for assigned districts), `admin` (manages users and
-  districts/churches), `super_admin` (everything, plus support access)
+  districts/churches), `super_admin` (shown in the app as **Sys Admin**: everything, plus support access)
 - Districts and churches, monthly entries with configurable offering types
 - Activity log and audit trail of every administrative action
 - Time-boxed **support access** grants, revocable by the super admin
@@ -44,7 +44,7 @@ supabase/
 
 | Table | Purpose |
 |---|---|
-| `profiles` | One row per user (linked to `auth.users`): name, phone, `role`, `status`, `last_login` |
+| `profiles` | One row per user (linked to `auth.users`): name, phone, `role`, `status`, `last_login`, `avatar_url` |
 | `districts`, `churches` | Organisation structure |
 | `user_district_access` | Which districts an `audit_user` may work in |
 | `admin_scope` | Which districts an `admin` covers (or `system_wide`) |
@@ -99,6 +99,23 @@ Notes:
   Supabase **Auth → URL Configuration → Redirect URLs**.
 - To use your own app icon, add `build/icon.ico` (256×256+) and uncomment the `icon` line in
   `electron-builder.yml`.
+
+## Hosting the web app and making email links work
+
+Password-reset and email-verification links must come back to a real web address. The web app is
+published to **GitHub Pages** by `.github/workflows/deploy-pages.yml` (on every push to `main`):
+
+1. In GitHub: **Settings → Pages → Build and deployment → Source: GitHub Actions** (one time).
+2. In Supabase: **Authentication → URL Configuration**
+   - **Site URL:** `https://jamesking-23.github.io/starsys/`
+   - **Redirect URLs:** add `https://jamesking-23.github.io/starsys/` (and `http://localhost:5173/` if you
+     develop locally).
+3. Reset and verification emails now open the hosted app, which shows the "choose a new password"
+   screen (reset) or "Email Verified" (sign-up). Expired or already-used links show a clear message.
+
+Users of the desktop `.exe` follow the same links in their browser; once the password is changed
+they sign in to the desktop app as normal. If you host elsewhere, change `VITE_PUBLIC_APP_URL` in
+both workflow files and the two URLs above.
 
 ## Setting it up on a new Supabase project
 

@@ -25,6 +25,9 @@ jobs:
     env:
       # The build is unsigned; stop electron-builder from hunting for a certificate.
       CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      # The desktop app has no web address of its own, so e-mailed links (password reset, email
+      # verification) send people to the hosted web app instead.
+      VITE_PUBLIC_APP_URL: https://jamesking-23.github.io/starsys/
     steps:
       - name: Check out code
         uses: actions/checkout@v4

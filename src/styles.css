@@ -154,6 +154,8 @@
         .dark .catchup-item { border-color: #4a443c; }
         .dark .catchup-item:hover { border-color: #faf8f3; background: #2a2621; }
         .catchup-item-label { font-size: 0.8125rem; font-weight: 500; }
+        /* A status pill with no text must not render as an empty coloured box */
+        .pill:empty { display: none; }
         .dc-menu-wrap { position: relative; display: inline-block; }
         .dc-menu { display: none; position: absolute; right: 0; top: calc(100% + 4px); z-index: 30; background: #fff; border: 1px solid #e7e5e0; border-radius: 2px; box-shadow: 0 12px 32px rgba(20,18,16,0.12); min-width: 140px; padding: 4px; }
         .dark .dc-menu { background: #2a2621; border-color: #4a443c; }

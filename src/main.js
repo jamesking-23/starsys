@@ -26,6 +26,15 @@ function appRedirectUrl(){
 const SUPABASE_URL = 'https://fwczzdckzyeszlgdelip.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ3Y3p6ZGNrenllc3psZ2RlbGlwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAzMzg0NDUsImV4cCI6MjEwNTkxNDQ0NX0.y2FsDidvLg7tEgSLfAkSBQ_emPCDecwR57gY-GJVAdM';
 const SUPABASE_CONFIGURED = SUPABASE_URL.indexOf('REPLACE_ME') === -1 && SUPABASE_ANON_KEY.indexOf('REPLACE_ME') === -1;
+// What the e-mail link that opened this page carried (password reset, sign-up confirmation, or an
+// error such as an expired link). Read before supabase-js processes and clears the URL.
+const AUTH_LINK = (function(){
+  const h = new URLSearchParams((window.location.hash || '').replace(/^#/, ''));
+  const q = new URLSearchParams(window.location.search);
+  const get = (k)=> h.get(k) || q.get(k) || '';
+  return { type: get('type'), error: get('error_description') || get('error'), errorCode: get('error_code') };
+})();
+let recoveryMode = AUTH_LINK.type === 'recovery' && !AUTH_LINK.error;
 let supabase = null;
 if (SUPABASE_CONFIGURED) {
   try { supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { detectSessionInUrl: true } }); } catch (e) { console.error(e); }
@@ -257,11 +266,11 @@ async function routeAfterAuth(){
   const profile = result.profile;
 
   if(profile.status === 'suspended'){
-    showNotice('Account Suspended', 'Your account has been suspended by an administrator. Contact your Super Admin or Admin for assistance.');
+    showNotice('Account Suspended', 'Your account has been suspended by an administrator. Contact your Sys Admin or Admin for assistance.');
     return;
   }
   if(profile.status === 'deactivated'){
-    showNotice('Account Deactivated', 'Your account has been deactivated. Contact your Super Admin for assistance.');
+    showNotice('Account Deactivated', 'Your account has been deactivated. Contact your Sys Admin for assistance.');
     return;
   }
   if(profile.status === 'pending_approval'){
@@ -284,13 +293,41 @@ async function bootstrap(){
     return;
   }
   supabase.auth.onAuthStateChange((event, session)=>{
-    if(event === 'PASSWORD_RECOVERY'){ showOverlay('resetOverlay'); }
+    if(event === 'PASSWORD_RECOVERY'){ recoveryMode = true; showOverlay('resetOverlay'); }
   });
 
   const initialized = await isSystemInitialized();
   if(!initialized){ showOverlay('setupOverlay'); return; }
 
+  // Tidy the address bar so a refresh doesn't replay the one-time link.
+  const hadAuthLink = !!(AUTH_LINK.type || AUTH_LINK.error);
+  if(hadAuthLink){ try{ history.replaceState(null, '', window.location.pathname); }catch(e){} }
+
+  // An e-mailed link that failed (expired, already used, or opened in another browser).
+  if(AUTH_LINK.error){
+    const expired = /expired|invalid/i.test(AUTH_LINK.error + ' ' + AUTH_LINK.errorCode);
+    showNotice(expired ? 'Link Expired' : 'Link Problem',
+      expired ? 'That link has expired or was already used. Reset links work once and only for a short time. Please request a new one from the sign-in page.'
+              : 'We could not use that link: ' + AUTH_LINK.error + '. Please request a new one from the sign-in page.');
+    return;
+  }
+
   const { data: { session } } = await supabase.auth.getSession();
+
+  // Password reset link: show the "choose a new password" form, not the dashboard.
+  if(recoveryMode){
+    if(session){ showOverlay('resetOverlay'); }
+    else { showNotice('Link Expired', 'That reset link is no longer valid. Please request a new one from the sign-in page.'); }
+    return;
+  }
+
+  // Sign-up confirmation link: confirm it, then send them to sign in (approval may still be pending).
+  if(AUTH_LINK.type === 'signup' && session){
+    await supabase.auth.signOut();
+    showNotice('Email Verified', 'Your email address has been verified. If an administrator has already approved your account you can sign in now; otherwise please wait for approval.');
+    return;
+  }
+
   if(session){ await routeAfterAuth(); }
   else { showOverlay('loginOverlay'); }
 }
@@ -307,10 +344,10 @@ document.getElementById('setupBtn').addEventListener('click', async ()=>{
   if(pw.length < 10){ errEl.textContent='Password must be at least 10 characters.'; return; }
   if(pw !== pw2){ errEl.textContent='Passwords do not match.'; return; }
   const btn = document.getElementById('setupBtn'); btn.disabled=true; btn.textContent='Creating…';
-  const { error } = await supabase.auth.signUp({ email, password: pw, options: { data: { full_name: name } } });
-  btn.disabled=false; btn.textContent='Create Super Admin & Initialize System';
+  const { error } = await supabase.auth.signUp({ email, password: pw, options: { data: { full_name: name }, emailRedirectTo: appRedirectUrl() } });
+  btn.disabled=false; btn.textContent='Create Sys Admin & Initialize System';
   if(error){ errEl.textContent = error.message; return; }
-  showNotice('System Initialized Successfully', 'The Super Admin account has been created. Please verify your email if prompted, then sign in.');
+  showNotice('System Initialized Successfully', 'The Sys Admin account has been created. Please verify your email if prompted, then sign in.');
 });
 
 /* ---------------- REGISTER (name, email, phone, password only) ---------------- */
@@ -328,7 +365,7 @@ document.getElementById('registerBtn').addEventListener('click', async ()=>{
   if(!terms){ errEl.textContent='Please agree to the terms to continue.'; return; }
   const btn = document.getElementById('registerBtn'); btn.disabled=true; btn.textContent='Creating…';
   const { error } = await supabase.auth.signUp({
-    email, password: pw, options: { data: { full_name: name, phone } }
+    email, password: pw, options: { data: { full_name: name, phone }, emailRedirectTo: appRedirectUrl() }
   });
   btn.disabled=false; btn.textContent='Create Account';
   if(error){ errEl.textContent = error.message; return; }
@@ -357,7 +394,7 @@ async function resendVerification(){
   const { data: { user } } = await supabase.auth.getUser();
   const email = user ? user.email : document.getElementById('loginEmail').value.trim();
   if(!email) return;
-  await supabase.auth.resend({ type: 'signup', email });
+  await supabase.auth.resend({ type: 'signup', email, options: { emailRedirectTo: appRedirectUrl() } });
   await appAlert('Verification email sent to '+email+'.', 'Email sent');
 }
 
@@ -367,8 +404,9 @@ document.getElementById('forgotBtn').addEventListener('click', async ()=>{
   const statusEl = document.getElementById('forgotStatus');
   if(!email){ setStatus(statusEl,'Please enter your email.', true); return; }
   setStatus(statusEl,'Sending…', false);
-  await supabase.auth.resetPasswordForEmail(email, { redirectTo: appRedirectUrl() });
-  setStatus(statusEl,'If that email is registered, a reset link has been sent.', false);
+  const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: appRedirectUrl() });
+  if(error && /rate|limit|seconds|too many/i.test(error.message)){ setStatus(statusEl, 'Too many requests. Please wait a minute and try again.', true); return; }
+  setStatus(statusEl,'If that email is registered, a reset link has been sent. It can take a few minutes; check your spam folder too.', false);
 });
 document.getElementById('resetBtn').addEventListener('click', async ()=>{
   const pw = document.getElementById('resetPassword').value;
@@ -380,7 +418,9 @@ document.getElementById('resetBtn').addEventListener('click', async ()=>{
   const { error } = await supabase.auth.updateUser({ password: pw });
   btn.disabled=false; btn.textContent='Set New Password';
   if(error){ errEl.textContent = error.message; return; }
-  showNotice('Password Reset', 'Your password has been successfully reset. Please sign in.');
+  recoveryMode = false;
+  await supabase.auth.signOut();   // the reset link signs you in temporarily; end that so you sign in normally
+  showNotice('Password Reset', 'Your password has been successfully reset. Please sign in with your new password.');
 });
 
 /* ============================================================
@@ -572,6 +612,7 @@ async function enterApp(profile){
   refreshIcons();
   document.getElementById('chipName').textContent = profile.full_name;
   renderOwnAvatars();
+  syncLocalAvatarToCloud();
   document.getElementById('chipEmail').textContent = roleLabel(profile.role)+(profile.email ? ' · '+profile.email : '');
   document.getElementById('unverifiedBanner').style.display = profile.email_confirmed_at ? 'none' : 'flex';
   document.getElementById('usersHeading').textContent = profile.role==='super_admin' ? 'User Management' : 'Users in Your Scope';
@@ -594,7 +635,7 @@ async function enterApp(profile){
   renderProgress();
 }
 
-function roleLabel(r){ return r==='super_admin'?'Super Admin' : r==='admin'?'Admin' : 'Audit User'; }
+function roleLabel(r){ return r==='super_admin'?'Sys Admin' : r==='admin'?'Admin' : 'Audit User'; }
 function setStatus(el,msg,isErr){ el.textContent=msg; el.classList.toggle('err', !!isErr); }
 
 /* ---------------- district/church cascading selects (entry form) ---------------- */
@@ -959,7 +1000,7 @@ document.getElementById('doneBtn').addEventListener('click', async ()=>{
   if(!d||!c||!m||!y){ setStatus(statusEl,'Please select district, church, month and year first.', true); return; }
   setStatus(statusEl,'Saving…', false);
   const ok = await saveEntryForCombo(d,c,m,y);
-  document.getElementById('savedBadge').textContent = 'Saved';
+  document.getElementById('savedBadge').textContent = ok ? 'Saved' : '';
   setStatus(statusEl, ok ? ('Saved '+c+' / '+m+' '+y+'.') : ('Could not save — you may not have access to this district, or the connection was interrupted.'), !ok);
 });
 
@@ -1504,7 +1545,7 @@ document.getElementById('refreshAuditLogBtn').addEventListener('click', loadAudi
 document.getElementById('refreshAuditBtn').addEventListener('click', loadFinancialAudit);
 
 /* ============================================================
-   SUPPORT ACCESS (Super Admin only)
+   SUPPORT ACCESS (Sys Admin only)
    ============================================================ */
 document.getElementById('grantSupportBtn').addEventListener('click', async ()=>{
   const statusEl = document.getElementById('supportStatus');
@@ -1596,10 +1637,10 @@ function dcMenuHtml(idPrefix, opts){
 function renderDistrictChurchList(){
   const container = document.getElementById('dcList'); container.innerHTML='';
   DISTRICT_NAMES.forEach((d,di)=>{
-    const box = document.createElement('div'); box.className='dc-district border border-ink-200 dark:border-ink-800 rounded-sm overflow-hidden mb-3 last:mb-0';
+    const box = document.createElement('div'); box.className='dc-district border border-ink-200 dark:border-ink-800 rounded-sm mb-3 last:mb-0';
     const churches = DISTRICTS[d]||[];
     const districtMenuId = 'dcmenu-d-'+di;
-    box.innerHTML = '<div class="dc-district-head flex items-center justify-between px-4 py-3 bg-ink-50 dark:bg-ink-900/50 border-b border-ink-200 dark:border-ink-800"><strong class="text-sm font-semibold dark:text-paper">'+esc(d)+' <span class="note font-normal">· '+churches.length+' churches</span></strong>'
+    box.innerHTML = '<div class="dc-district-head rounded-t-sm flex items-center justify-between px-4 py-3 bg-ink-50 dark:bg-ink-900/50 border-b border-ink-200 dark:border-ink-800"><strong class="text-sm font-semibold dark:text-paper">'+esc(d)+' <span class="note font-normal">· '+churches.length+' churches</span></strong>'
       + '<span class="flex items-center gap-1.5">'
       + '<button class="btn-secondary btn-sm dc-add-church" data-d="'+esc(d)+'">+ Church</button>'
       + dcMenuHtml(districtMenuId, [{label:'Rename', action:'rename-district'},{label:'Remove', action:'remove-district'}])
@@ -1822,7 +1863,7 @@ document.getElementById('changePwBtn').addEventListener('click', async ()=>{
   setStatus(statusEl, 'Password updated.', false);
 });
 
-/* ---------------- Super Admin: change own email ---------------- */
+/* ---------------- Sys Admin: change own email ---------------- */
 document.getElementById('saChangeEmailBtn').addEventListener('click', async ()=>{
   const statusEl = document.getElementById('saEmailStatusLine');
   const email = document.getElementById('saNewEmail').value.trim();
@@ -1900,7 +1941,8 @@ function verifyExportParity(districtNames){
 }
 
 // Columns for a per-church row: Church(1) SerialNo(2) offerings(3..3+N-1) Total(3+N)
-const N_OFF = OFFERINGS.length;
+// NOTE: the number of offering columns is read from OFFERINGS at export time (admins can add
+// offering types after the page has loaded), so it must never be cached in a constant.
 
 function styleHeaderRow(row){
   row.eachCell(c=>{ c.font = {bold:true, color:{argb:'FF163A5A'}}; c.fill = {type:'pattern', pattern:'solid', fgColor:{argb:'FFEFF2F6'}};
@@ -1959,9 +2001,9 @@ function addBoxBorder(ws, rowStart, colStart, rowEnd, colEnd){
 //   Table 3 (right):   one cumulative block, rows = churches  — every cell is a formula pointing at Table 2
 // Editing a figure in Table 1 automatically ripples through Table 2 and Table 3 — no other data needs re-entry.
 function buildDistrictSheet(ws, districtName, churches, months, year, mode, buckets){
-  const w1 = N_OFF + 3; // Church, Serial No, offerings..., Total
-  const w2 = N_OFF + 3; // Month,  Serial No, offerings..., Total
-  const w3 = N_OFF + 2; // Church, offerings..., Total
+  const w1 = OFFERINGS.length + 3; // Church, Serial No, offerings..., Total
+  const w2 = OFFERINGS.length + 3; // Month,  Serial No, offerings..., Total
+  const w3 = OFFERINGS.length + 2; // Church, offerings..., Total
   const gap = 2;
   const col1 = 1;
   const col2 = col1 + w1 + gap;
@@ -2014,7 +2056,7 @@ function buildDistrictSheet(ws, districtName, churches, months, year, mode, buck
       const serial = entry && entry.serialNo ? entry.serialNo : '';
       writeRowAt(ws, r, col1, [church, serial, ...vals, null]);
       monthChurchRow[month][church] = r;
-      for(let i=0;i<N_OFF;i++){ styleFigureCell(ws.getRow(r).getCell(col1+2+i)); }
+      for(let i=0;i<OFFERINGS.length;i++){ styleFigureCell(ws.getRow(r).getCell(col1+2+i)); }
       const totalCell = ws.getRow(r).getCell(col1+w1-1);
       totalCell.value = { formula: 'SUM('+colLetter(col1+2)+r+':'+colLetter(col1+w1-2)+r+')' };
       styleFigureCell(totalCell, {bold:true});
@@ -2050,7 +2092,7 @@ function buildDistrictSheet(ws, districtName, churches, months, year, mode, buck
       const serialCell = row.getCell(col2+1);
       serialCell.value = { formula: colLetter(col1+1)+srcRow };
       styleSerialCell(serialCell);
-      for(let i=0;i<N_OFF;i++){
+      for(let i=0;i<OFFERINGS.length;i++){
         const cell = row.getCell(col2+2+i);
         cell.value = { formula: colLetter(col1+2+i)+srcRow };
         styleFigureCell(cell);
@@ -2079,7 +2121,7 @@ function buildDistrictSheet(ws, districtName, churches, months, year, mode, buck
     const srcRow = churchTotalRow[church]; // that church's TOTAL row in Table 2 (already summed across the selected months)
     const row = ws.getRow(r3);
     row.getCell(col3).value = church;
-    for(let i=0;i<N_OFF;i++){
+    for(let i=0;i<OFFERINGS.length;i++){
       const cell = row.getCell(col3+1+i);
       cell.value = { formula: colLetter(col2+2+i)+srcRow };
       styleFigureCell(cell);
@@ -2219,7 +2261,7 @@ async function exportCumulative(mode){
     const buckets = buildModeBuckets(mode, districtNames);
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet('Cumulative');
-    const colCount = 1 + N_OFF + 1;
+    const colCount = 1 + OFFERINGS.length + 1;
     const titleRow = ws.addRow(['STARSYS — CUMULATIVE OFFERTORY REPORT (ALL DISTRICTS) — '+modeLabel(mode).toUpperCase()+' — '+year]);
     ws.mergeCells(titleRow.number,1,titleRow.number,colCount);
     titleRow.getCell(1).font = {bold:true, size:14, color:{argb:'FF163A5A'}};
@@ -2315,6 +2357,16 @@ async function saveAvatar(dataUrl){ // dataUrl === null removes the photo; resol
   }catch(e){ throw new Error('Could not save the photo on this device (storage is full or blocked).'); }
   currentUser.avatar_url = null;
   return 'device';
+}
+// A photo saved on this device before the avatar_url column existed is moved to the cloud once,
+// so it then shows everywhere. Silent: if it can't be saved it simply stays on the device.
+async function syncLocalAvatarToCloud(){
+  try{
+    if(!currentUser || currentUser.avatar_url) return;
+    const local = localStorage.getItem(localAvatarKey(currentUser.id));
+    if(!local) return;
+    if(await saveAvatar(local) === 'cloud') renderOwnAvatars();
+  }catch(e){ /* keep the on-device copy */ }
 }
 (function(){
   const input = document.getElementById('avatarFileInput');

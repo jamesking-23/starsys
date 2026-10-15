@@ -107,15 +107,15 @@ export type Database = {
       }
       profiles: {
         Row: {
-          created_at: string; email: string | null; full_name: string | null; id: string
+          avatar_url: string | null; created_at: string; email: string | null; full_name: string | null; id: string
           last_login: string | null; phone: string | null; role: string; status: string
         }
         Insert: {
-          created_at?: string; email?: string | null; full_name?: string | null; id: string
+          avatar_url?: string | null; created_at?: string; email?: string | null; full_name?: string | null; id: string
           last_login?: string | null; phone?: string | null; role?: string; status?: string
         }
         Update: {
-          created_at?: string; email?: string | null; full_name?: string | null; id?: string
+          avatar_url?: string | null; created_at?: string; email?: string | null; full_name?: string | null; id?: string
           last_login?: string | null; phone?: string | null; role?: string; status?: string
         }
         Relationships: []
