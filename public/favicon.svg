@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="21 21 78 78" width="256" height="256" role="img" aria-label="Starsys">
+  <!-- Simplified seal for 16-48px (browser tab, taskbar, title bar): the text ring is dropped because it is
+       unreadable at that size; rings and the gold four-petal centre are kept and made bolder. -->
+  <defs><path id="petal" d="M60 60 C57.2 54.5 57.2 49 60 42 C62.8 49 62.8 54.5 60 60 Z"/></defs>
+  <rect x="21" y="21" width="78" height="78" rx="16" fill="#1D1C18"/>
+  <circle cx="60" cy="60" r="34" fill="none" stroke="#E7E5E0" stroke-opacity=".85" stroke-width="4"/>
+  <circle cx="60" cy="60" r="25" fill="none" stroke="#E7E5E0" stroke-opacity=".5" stroke-width="2.6"/>
+  <g fill="#D4A04A" transform="translate(60 60) scale(1.5) translate(-60 -60)">
+    <use href="#petal"/>
+    <use href="#petal" transform="rotate(90 60 60)"/>
+    <use href="#petal" transform="rotate(180 60 60)"/>
+    <use href="#petal" transform="rotate(270 60 60)"/>
+  </g>
+  <circle cx="60" cy="60" r="3.4" fill="#C98A2F"/>
+</svg>

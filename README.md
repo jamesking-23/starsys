@@ -31,7 +31,10 @@ src/icons.js                       The Lucide icons bundled with the app
 src/styles.css                     Custom CSS + Tailwind layers
 tailwind.config.cjs, postcss.config.cjs, vite.config.js
 electron/main.cjs                  Electron window (desktop app)
-electron-builder.yml               Windows packaging config
+electron-builder.yml               Windows installer config (NSIS)
+build/                             App icon sources and generated icon.ico / icon.png
+public/                            Web favicons (generated)
+scripts/generate-icons.cjs         Rebuilds all icons from the SVG sources
 .github/workflows/build-exe.yml    CI: builds the .exe on every push
 supabase/
   config.toml                      Supabase CLI config for local dev
@@ -76,29 +79,32 @@ npm run dist:win     # build the Windows .exe into release/ (run on Windows)
 Adding an icon: import it in `src/icons.js`, add it to the `icons` object, then use its
 kebab-case name in `<i data-lucide="...">`.
 
-## Windows desktop app (.exe)
+## Windows desktop app (installer)
 
-Every push to GitHub triggers **Actions → Build Windows EXE**, which produces
-`Starsys-v<version>.exe`, with `<version>` read from `package.json`. Download it from the
-run's **Artifacts** section.
+Every push to GitHub triggers **Actions → Build Windows EXE**, which produces a proper Windows
+installer named `Starsys-Setup-v<version>.exe` (`<version>` is read from `package.json`).
 
-To publish a labelled release:
+- **Quick download:** the run's **Artifacts** section (a zip containing the installer).
+- **Labelled release:** bump `version` in `package.json` (e.g. `1.1.1`), commit, then
+  `git tag v1.1.1 && git push origin v1.1.1`. The workflow checks the tag matches `package.json`
+  and attaches the installer to a GitHub Release (Releases page on the repo).
 
-1. Bump `version` in `package.json` (e.g. `1.0.1`) and commit.
-2. Tag and push: `git tag v1.0.1 && git push origin v1.0.1`.
-3. The workflow checks the tag matches `package.json`, then attaches the `.exe` to a GitHub Release.
+What the installer does: shows a setup wizard, installs per-user to `%LocalAppData%\Programs\Starsys`
+(no administrator password needed), adds Start-menu and desktop shortcuts, and registers in
+**Settings → Apps → Installed apps** with an uninstaller. The app and the installer use the Starsys seal icon.
 
 Notes:
-- The `.exe` is a **portable** build (one file, no installer) and is **unsigned**, so Windows
-  SmartScreen may warn on first run ("More info → Run anyway"). Buying a code-signing
-  certificate removes the warning. To get a Setup wizard instead, change `target` to `nsis`
-  in `electron-builder.yml`.
+- The installer is **unsigned**, so Windows SmartScreen may warn on first run ("More info → Run anyway").
+  Buying a code-signing certificate removes the warning.
 - The app still needs internet to reach Supabase; only the UI, fonts and icons are bundled.
-- Password-reset e-mails open in the user's browser. Host the web build somewhere and set
-  `VITE_PUBLIC_APP_URL` (in a `.env` file at build time) to that address, and add it to
-  Supabase **Auth → URL Configuration → Redirect URLs**.
-- To use your own app icon, add `build/icon.ico` (256×256+) and uncomment the `icon` line in
-  `electron-builder.yml`.
+- Password-reset and verification emails open the hosted web app (see below), not the desktop app.
+
+### App icon
+
+The icon is a still frame of the rotating seal. Sources live in `build/icon.svg` (large sizes, with the
+text ring) and `build/icon-small.svg` (16–48 px, simplified). After editing either, run
+`npm run icons` to regenerate `build/icon.ico`, `build/icon.png` and the web favicons in `public/`
+(needs a desktop session; on a headless Linux box prefix with `xvfb-run -a` and add `-- --no-sandbox`).
 
 ## Hosting the web app and making email links work
 

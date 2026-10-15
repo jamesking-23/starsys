@@ -14,6 +14,7 @@ function createWindow() {
     minHeight: 600,
     title: 'Starsys',
     backgroundColor: '#141210',
+    icon: path.join(__dirname, '..', 'build', 'icon.png'),
     autoHideMenuBar: true,
     show: false,
     webPreferences: {

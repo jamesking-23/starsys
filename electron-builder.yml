@@ -5,20 +5,35 @@ copyright: Starsys
 directories:
   output: release
 
-# Only the built web app and the Electron entry point go into the package.
+# Only the built web app, the Electron entry point and the window icon go into the package.
 # (Everything the UI needs is already bundled into dist/, so no node_modules are shipped.)
 files:
   - dist/**
   - electron/**
+  - build/icon.png
   - package.json
 
-# Output name carries the version from package.json, e.g. Starsys-v1.0.0.exe
-artifactName: Starsys-v${version}.${ext}
+# Output name carries the version from package.json, e.g. Starsys-Setup-v1.1.0.exe
+artifactName: Starsys-Setup-v${version}.${ext}
 
 win:
-  # "portable" = one self-contained .exe, no installer. Switch to `nsis` for a Setup wizard.
+  icon: build/icon.ico
   target:
-    - target: portable
+    - target: nsis
       arch: [x64]
-  # To use your own icon, add build/icon.ico (256x256 or larger) and uncomment:
-  # icon: build/icon.ico
+
+# A real Windows installer: installs to the user's Programs folder (no admin prompt), adds Start-menu and
+# desktop shortcuts, and registers in Settings > Apps > Installed apps with an uninstaller.
+nsis:
+  oneClick: false                       # show the install wizard
+  perMachine: false                     # per-user install, no administrator rights needed
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  shortcutName: Starsys
+  uninstallDisplayName: Starsys Financial Reporting
+  runAfterFinish: true
+  deleteAppDataOnUninstall: false       # keep the user's saved settings if they reinstall
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+  installerHeaderIcon: build/icon.ico
