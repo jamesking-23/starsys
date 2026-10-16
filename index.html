@@ -225,7 +225,8 @@
                     <button id="themeQuickBtn" class="js-theme-toggle p-2 text-ink-500 dark:text-ink-400 hover:text-ink-900 dark:hover:text-paper transition-colors" title="Toggle light / dark mode" aria-label="Toggle light / dark mode"><i data-lucide="sun-moon" class="w-4 h-4"></i></button>
                     <button id="notifBtn" class="relative p-2 text-ink-500 dark:text-ink-400 hover:text-ink-900 dark:hover:text-paper transition-colors" title="Notifications" aria-label="Notifications">
                         <i data-lucide="bell" class="w-4 h-4"></i>
-                        <span id="notifDot" class="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-gold-500 rounded-full" style="display:none"></span>
+                        <span id="notifBadge" class="notif-badge" hidden>0</span>
+                        <span id="notifRing" class="notif-ring" hidden title="You have open to-dos"></span>
                     </button>
                 </div>
             </header>
@@ -871,14 +872,7 @@
 
     <div id="userActionMenu" role="menu"></div>
 
-    <!-- Notifications panel -->
-    <div id="notifPanel" class="hidden fixed right-4 top-16 z-50 w-[360px] max-w-[calc(100vw-2rem)] panel rounded-sm shadow-2xl modal-content">
-        <div class="px-5 py-3 border-b border-ink-100 dark:border-ink-800 flex items-center justify-between">
-            <h3 class="text-sm font-semibold dark:text-paper">Notifications</h3>
-            <button id="notifMarkRead" class="text-[0.625rem] font-semibold uppercase tracking-wider text-gold-600 hover:text-gold-500">Mark all read</button>
-        </div>
-        <div id="notifList" class="max-h-[60vh] overflow-y-auto divide-y divide-ink-100 dark:divide-ink-800"></div>
-    </div>
+    <!-- Notification Center is built by src/notifications.js (panel, toasts, live region) -->
 
     <!-- ==================== MODALS ==================== -->
 

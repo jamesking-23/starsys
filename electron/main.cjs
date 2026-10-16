@@ -4,6 +4,9 @@
 const { app, BrowserWindow, Menu, shell } = require('electron');
 const path = require('path');
 
+// Windows needs this for notifications to show the app name and icon (matches appId in electron-builder.yml).
+if (process.platform === 'win32') app.setAppUserModelId('com.starsys.financialreporting');
+
 const isHttp = (u) => /^https?:\/\//i.test(u);
 
 function createWindow() {

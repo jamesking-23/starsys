@@ -12,6 +12,7 @@ import '@fontsource/fraunces/latin-400-italic.css';
 import { createClient } from '@supabase/supabase-js';
 import ExcelJS from 'exceljs';
 import { refreshIcons } from './icons.js';
+import { createNotifications } from './notifications.js';
 import './ui.js';
 
 // Where password-reset / confirmation e-mails send people back to. On the web that's this page.
@@ -482,7 +483,7 @@ startIdleWatch();
 
 /* ---------------- LOGOUT ---------------- */
 async function fullSignOut(){
-  stopEntriesListener(); stopProfileListener(); stopPresence(); stopIdleTimer();
+  stopEntriesListener(); stopProfileListener(); stopPresence(); stopIdleTimer(); notifications.stop();
   await supabase.auth.signOut();
   currentUser = null;
 }
@@ -631,7 +632,7 @@ async function enterApp(profile){
   startPresence(profile);
   resetIdleTimer();
   renderOfferingsSummary();
-  fsGetAllEntriesOnce().then(()=>{ renderProgress(); refreshNotifications(false); });
+  fsGetAllEntriesOnce().then(()=>{ renderProgress(); notifications.start(); });
   renderProgress();
 }
 
@@ -823,6 +824,7 @@ function startEntriesListener(){
       const row = payload.eventType==='DELETE' ? payload.old : payload.new;
       state[keyFor(row.district,row.church,row.month,row.year)] = payload.eventType==='DELETE' ? {} : rowToEntry(row);
       renderProgress();
+      notifications.onEntryEvent();
       const line = document.getElementById('syncStatusLine');
       if(line) line.textContent = 'Live : last update ' + new Date().toLocaleTimeString();
     })
@@ -2423,15 +2425,6 @@ async function syncLocalAvatarToCloud(){
   }
 })();
 
-/* ============================================================
-   NOTIFICATIONS — built from live data (no extra table needed):
-   pending approvals (admins), recent saved entries, and a reminder
-   for last month's missing reports within the user's scope.
-   ============================================================ */
-let notifItems = [];
-function notifSeenKey(){ return 'starsys_notif_seen_'+(currentUser ? currentUser.id : ''); }
-function notifSeenAt(){ try{ return Number(localStorage.getItem(notifSeenKey())) || 0; }catch(e){ return 0; } }
-function markNotifsSeen(){ try{ localStorage.setItem(notifSeenKey(), String(Date.now())); }catch(e){} }
 function timeAgo(iso){
   const t = new Date(iso).getTime(); if(!t) return '';
   const diff = Math.max(0, Date.now() - t), min = Math.floor(diff/60000);
@@ -2441,85 +2434,33 @@ function timeAgo(iso){
   const day = Math.floor(hr/24); if(day < 30) return day+' day'+(day===1?'':'s')+' ago';
   return new Date(iso).toLocaleDateString();
 }
-function missingReportsReminder(){
-  const now = new Date(); let mi = now.getMonth()-1, yr = now.getFullYear();
-  if(mi < 0){ mi = 11; yr--; }
-  if(yr < FIRST_YEAR) return null;
-  const month = MONTHS[mi]; let missing = 0;
-  scopedDistrictNames().forEach(d=> scopedChurches(d).forEach(c=>{
-    if(entryStatus(state[keyFor(d,c,month,yr)]) !== 'Entered') missing++;
-  }));
-  if(!missing) return null;
-  return {
-    id: 'missing-'+month+yr, ts: new Date(now.getFullYear(), now.getMonth(), 1).toISOString(), icon: 'alert-triangle',
-    title: missing+' church'+(missing===1?' has':'es have')+' no '+month+' '+yr+' report',
-    sub: 'Open Data Entry to fill or catch up', action: ()=> activateTab('tab-entry')
-  };
-}
-async function buildNotifications(){
-  const items = [];
-  if(!currentUser || !supabase) return items;
-  if(currentUser.role === 'admin' || currentUser.role === 'super_admin'){
-    const { data } = await supabase.from('profiles').select('id,full_name,created_at').eq('status','pending_approval').order('created_at',{ascending:false});
-    (data||[]).forEach(p=> items.push({
-      id: 'pending-'+p.id, ts: p.created_at, icon: 'user-plus',
-      title: p.full_name+' is awaiting approval', sub: 'Open Users to approve and assign districts',
-      action: ()=>{ activateTab('tab-admin'); activateAdminSubtab('users'); }
-    }));
-  }
-  const { data: aud } = await supabase.from('audit').select('*').order('ts',{ascending:false}).limit(8);
-  (aud||[]).filter(a=> inMyScope(a.district)).forEach(a=> items.push({
-    id: 'audit-'+a.ts+'-'+(a.church||''), ts: a.ts, icon: 'pen-line',
-    title: (a.name||'Someone')+' saved '+(a.church||'a church')+' \u00b7 '+(a.month||'')+' '+(a.year||''),
-    sub: (a.district||'')+' \u00b7 '+formatWithCommas(String(Math.round(Number(a.total)||0)))+' UGX',
-    action: ()=> activateTab('tab-entry')
-  }));
-  const rem = missingReportsReminder(); if(rem) items.push(rem);
-  items.sort((a,b)=> new Date(b.ts) - new Date(a.ts));
-  return items.slice(0, 12);
-}
-function renderNotifPanel(seenAt){
-  const list = document.getElementById('notifList'); list.innerHTML = '';
-  if(!notifItems.length){ list.innerHTML = '<p class="note p-5">You\u2019re all caught up \u2014 nothing new right now.</p>'; return; }
-  notifItems.forEach(n=>{
-    const unseen = new Date(n.ts).getTime() > seenAt;
-    const btn = document.createElement('button');
-    btn.className = 'w-full text-left flex items-start gap-3 px-5 py-3 table-row';
-    btn.innerHTML = '<span class="w-8 h-8 rounded-full bg-ink-900 dark:bg-ink-800 flex items-center justify-center flex-shrink-0"><i data-lucide="'+n.icon+'" class="w-3.5 h-3.5 text-gold-400"></i></span>'
-      + '<div class="min-w-0 flex-1"><p class="text-xs font-medium dark:text-paper">'+esc(n.title)+'</p><p class="text-[0.625rem] text-ink-500 mt-0.5">'+esc(n.sub)+'</p><p class="text-[0.625rem] text-ink-400 mt-0.5">'+esc(timeAgo(n.ts))+'</p></div>'
-      + (unseen ? '<span class="w-1.5 h-1.5 bg-gold-500 rounded-full mt-1.5 flex-shrink-0"></span>' : '');
-    btn.addEventListener('click', ()=>{ closeNotifPanel(); n.action(); });
-    list.appendChild(btn);
+
+/* ============================================================
+   NOTIFICATION CENTER — see src/notifications.js. Everything is derived from live data the user
+   can already see; this just hands the module the app's helpers and navigation.
+   ============================================================ */
+// Jump to a specific church + month in Data Entry (asks about unsaved changes first, like the selects do).
+async function openEntryFor(d, c, m, y){
+  activateTab('tab-entry');
+  await guardedSelectionChange(()=>{
+    districtSelect.value = d;
+    churchSelect.disabled = false;
+    populateSelect(churchSelect, scopedChurches(d), '-- Select church --');
+    churchSelect.value = c;
+    monthSelect.value = m;
+    yearSelect.value = String(y);
   });
-  refreshIcons();
 }
-async function refreshNotifications(){
-  try{ notifItems = await buildNotifications(); }catch(e){ console.error(e); notifItems = []; }
-  const seen = notifSeenAt();
-  const dot = document.getElementById('notifDot');
-  if(dot) dot.style.display = notifItems.some(n=> new Date(n.ts).getTime() > seen) ? 'block' : 'none';
-}
-function closeNotifPanel(){ document.getElementById('notifPanel').classList.add('hidden'); }
-async function toggleNotifPanel(){
-  const panel = document.getElementById('notifPanel');
-  if(!panel.classList.contains('hidden')){ closeNotifPanel(); return; }
-  panel.classList.remove('hidden');
-  document.getElementById('notifList').innerHTML = '<p class="note p-5">Loading\u2026</p>';
-  const seen = notifSeenAt();
-  try{ notifItems = await buildNotifications(); }catch(e){ console.error(e); notifItems = []; }
-  renderNotifPanel(seen);
-  markNotifsSeen();
-  const dot = document.getElementById('notifDot'); if(dot) dot.style.display = 'none';
-}
-document.getElementById('notifBtn').addEventListener('click', ev=>{ ev.stopPropagation(); toggleNotifPanel(); });
-document.getElementById('notifPanel').addEventListener('click', ev=> ev.stopPropagation());
-document.getElementById('notifMarkRead').addEventListener('click', ()=>{
-  markNotifsSeen(); renderNotifPanel(Date.now());
-  const dot = document.getElementById('notifDot'); if(dot) dot.style.display = 'none';
+const notifications = createNotifications({
+  getSupabase: ()=> supabase, getUser: ()=> currentUser, getState: ()=> state,
+  MONTHS, FIRST_YEAR, keyFor, entryStatus, entryTotal, inMyScope, scopedDistrictNames, scopedChurches, computeMonthProgress,
+  refreshIcons, resendVerification,
+  go: {
+    entry: openEntryFor,
+    tab: (id)=> activateTab(id),
+    users: ()=>{ activateTab('tab-admin'); activateAdminSubtab('users'); }
+  }
 });
-document.addEventListener('click', ()=> closeNotifPanel());
-document.addEventListener('keydown', ev=>{ if(ev.key === 'Escape') closeNotifPanel(); });
-setInterval(()=>{ if(currentUser) refreshNotifications(); }, 90000);
 
 /* ---------------- kick everything off ---------------- */
 bootstrap();

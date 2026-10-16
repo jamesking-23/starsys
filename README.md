@@ -19,6 +19,7 @@ Excel export.
 - Districts and churches, monthly entries with configurable offering types
 - Activity log and audit trail of every administrative action
 - Time-boxed **support access** grants, revocable by the super admin
+- **Notification Center**: a live bell with to-dos you can act on, grouped updates, monthly milestones and an optional desktop alert (see below)
 - Excel export of reports; realtime updates; light/dark mode; adjustable text size (100–120%)
 
 ## Repository layout
@@ -63,6 +64,27 @@ supabase/
 (`approve_user`, `set_user_status`, `promote_to_admin`, `add_district`, `rename_church`, …) that
 check the caller's role, pin `search_path`, and write to `audit_log`. A trigger on `profiles`
 stops users changing their own `role`, `status` or `last_login`.
+
+## Notification Center
+
+The bell in the top bar opens a panel that is built entirely from data the signed-in person can already see
+(no extra database tables), in `src/notifications.js`:
+
+- **To do** (gold bar): people waiting for approval (admins), churches still to report last month with a
+  *Fill now* button that opens Data Entry on the first missing church and month, and an unverified email.
+- **Updates**: people saving reports (several saves by one person within 45 minutes become one line), a
+  *month is fully reported* milestone, a monthly total with the change versus the month before (shown only when
+  both months are at least 80% reported, so it can't mislead), and people-and-access events for admins.
+- **Reporting pulse**: a progress ring for the month that matters, linking to the Progress tab.
+- Per item: mark read/unread, snooze until tomorrow 8:00, dismiss (all with Undo). The bell shows an unread
+  count, or a hollow ring when nothing is new but to-dos remain; the tab title shows `(n)`.
+- Arrives live (new saves and sign-ups) with an optional pop-up, **desktop alert** and chime. Settings are under the
+  sliders icon and are saved per person on that device. Desktop alerts and sound are off until switched on.
+- Keyboard: arrow keys move between items, Delete dismisses, Escape closes and returns focus to the bell.
+  On phones the panel is a bottom sheet.
+
+Read/dismissed/snoozed state and preferences are stored in the browser (localStorage) per user, so they do not
+follow someone to another device.
 
 ## Development
 
