@@ -20,6 +20,7 @@ Excel export.
 - Activity log and audit trail of every administrative action
 - Time-boxed **support access** grants, revocable by the super admin
 - **Notification Center**: a live bell with to-dos you can act on, grouped updates, monthly milestones and an optional desktop alert (see below)
+- **Session security**: 30 minute idle timeout with a countdown, 12 hour hard limit, safe across sleep, shutdown and restart (see below)
 - Excel export of reports; realtime updates; light/dark mode; adjustable text size (100–120%)
 
 ## Repository layout
@@ -85,6 +86,26 @@ The bell in the top bar opens a panel that is built entirely from data the signe
 
 Read/dismissed/snoozed state and preferences are stored in the browser (localStorage) per user, so they do not
 follow someone to another device.
+
+## Sessions and sign-in security
+
+Signing in lasts until the first of two limits (set at the top of `src/session.js`):
+
+| Limit | Default | What happens |
+|---|---|---|
+| **Idle** | 30 minutes without activity | A "Are you still there?" countdown appears for the last 60 seconds, then the person is signed out |
+| **Absolute** | 12 hours after signing in, however active | A warning appears 5 minutes before, then the person is signed out |
+
+Sleep, shutdown and restart cannot extend a session: the limits are checked against timestamps saved on the
+device (not timers), when the app opens, when a window is shown or focused after sleep, and every 5 seconds
+while it is open. A saved login that is past either limit is ended before the app is shown, with a notice explaining
+why. The first mouse move after waking cannot revive an expired session. A clock set backwards, a record from a different
+user, or no record at all (a login saved before this policy existed) also ends the session. All windows share the record,
+so activity in one keeps the others alive and signing out in one signs out the rest.
+
+This is enforced in the browser/app. For a server-side backstop, also set it in Supabase: **Authentication → Sessions →
+Time-box user sessions** (12 hours) and **Inactivity timeout** (30 minutes). These need the Pro plan; they end the
+session on the server even if someone bypasses the app.
 
 ## Development
 

@@ -13,6 +13,7 @@ import { createClient } from '@supabase/supabase-js';
 import ExcelJS from 'exceljs';
 import { refreshIcons } from './icons.js';
 import { createNotifications } from './notifications.js';
+import { createSessionGuard } from './session.js';
 import './ui.js';
 
 // Where password-reset / confirmation e-mails send people back to. On the web that's this page.
@@ -63,8 +64,6 @@ let profileChannel = null;
 let districtsChannel = null;
 let presenceChannel = null;
 let onlineUserIds = new Set();
-let idleTimer = null;
-const IDLE_LIMIT_MS = 8 * 60 * 60 * 1000; // 8 hours of inactivity before auto-logout
 let myScope = [];            // 'all' | [districtName, ...]
 let districtModalResolve = null;
 
@@ -329,7 +328,23 @@ async function bootstrap(){
     return;
   }
 
-  if(session){ await routeAfterAuth(); }
+  if(session){
+    if(hadAuthLink){
+      sessionGuard.begin(session.user.id);            // just signed in through an e-mailed link: a fresh session
+    } else {
+      // The app was reopened, restarted or woken with a saved login. Honour the idle and 12 hour limits using the
+      // saved timestamps, so a shutdown or sleep cannot keep someone signed in. (No record at all = a login saved
+      // before this policy existed, which is also ended once.)
+      const v = sessionGuard.verdictForRestored(session.user.id);
+      if(!v.ok){
+        try{ await supabase.auth.signOut(); }catch(e){ console.error(e); }
+        sessionGuard.clear();
+        showNotice('Signed Out', sessionGuard.message(v.reason));
+        return;
+      }
+    }
+    await routeAfterAuth();
+  }
   else { showOverlay('loginOverlay'); }
 }
 
@@ -382,9 +397,10 @@ document.getElementById('loginBtn').addEventListener('click', async ()=>{
   const errEl = document.getElementById('loginError'); errEl.textContent='';
   if(!email || !pw){ errEl.textContent='Please enter your email and password.'; return; }
   const btn = document.getElementById('loginBtn'); btn.disabled=true; btn.textContent='Checking…';
-  const { error } = await supabase.auth.signInWithPassword({ email, password: pw });
+  const { data: signedIn, error } = await supabase.auth.signInWithPassword({ email, password: pw });
   btn.disabled=false; btn.textContent='Sign In';
   if(error){ errEl.textContent = 'Incorrect email or password.'; return; }
+  sessionGuard.begin(signedIn.user.id);
   try{ await supabase.rpc('record_login'); }catch(e){}
   await routeAfterAuth();
 });
@@ -459,32 +475,24 @@ function refreshOpenProfilePresence(){
 }
 
 /* ============================================================
-   IDLE TIMEOUT — sign out after 8 hours with no interaction at all
-   (deliberately long: short timeouts interrupt legitimate slow data
-   entry, so we only guard against a device being left signed in).
+   SESSION POLICY — see src/session.js. 30 minutes idle (with a "Still there?" countdown) and a 12 hour
+   hard limit, enforced from saved timestamps so sleep, shutdown and restart cannot extend a session.
    ============================================================ */
-function resetIdleTimer(){
-  if(!currentUser) return;
-  clearTimeout(idleTimer);
-  idleTimer = setTimeout(async ()=>{
-    await fullSignOut();
-    showNotice('Signed Out', 'You were signed out after 8 hours of inactivity. Please sign in again.');
-    showOverlay('loginOverlay');
-  }, IDLE_LIMIT_MS);
+async function endSession(reason, message){
+  await fullSignOut();
+  if(message) showNotice('Signed Out', message);   // the notice stays on screen until they choose to sign in again
+  else showOverlay('loginOverlay');                // they chose "Sign out now"
 }
-function startIdleWatch(){
-  ['mousemove','mousedown','keydown','touchstart','scroll'].forEach(evt=>{
-    window.addEventListener(evt, resetIdleTimer, {passive:true});
-  });
-  resetIdleTimer();
-}
-function stopIdleTimer(){ clearTimeout(idleTimer); idleTimer=null; }
-startIdleWatch();
+const sessionGuard = createSessionGuard({
+  getUserId: ()=> currentUser && currentUser.id,
+  isSignedIn: ()=> !!currentUser,
+  endSession
+});
 
 /* ---------------- LOGOUT ---------------- */
 async function fullSignOut(){
-  stopEntriesListener(); stopProfileListener(); stopPresence(); stopIdleTimer(); notifications.stop();
-  await supabase.auth.signOut();
+  stopEntriesListener(); stopProfileListener(); stopPresence(); sessionGuard.stop(); notifications.stop();
+  try{ await supabase.auth.signOut(); }catch(e){ console.error(e); }   // offline: the local session is still cleared
   currentUser = null;
 }
 document.getElementById('logoutBtn').addEventListener('click', async ()=>{ await fullSignOut(); showOverlay('loginOverlay'); });
@@ -630,7 +638,7 @@ async function enterApp(profile){
   startDistrictsRealtime();
   startOfferingsRealtime();
   startPresence(profile);
-  resetIdleTimer();
+  sessionGuard.start();
   renderOfferingsSummary();
   fsGetAllEntriesOnce().then(()=>{ renderProgress(); notifications.start(); });
   renderProgress();
