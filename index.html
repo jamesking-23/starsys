@@ -72,15 +72,15 @@
                 <p class="text-ink-500 dark:text-ink-400 text-sm text-center mb-6">Welcome to Starsys Financial Reporting.</p>
                 <div class="space-y-5">
                     <div>
-                        <label class="block text-[0.6875rem] font-medium text-ink-700 dark:text-ink-300 mb-2 uppercase tracking-wider">Email</label>
-                        <input id="loginEmail" type="email" placeholder="you@organization.org" class="input-field w-full px-4 py-3 rounded-sm text-sm">
+                        <label for="loginEmail" class="block text-[0.6875rem] font-medium text-ink-700 dark:text-ink-300 mb-2 uppercase tracking-wider">Email</label>
+                        <div class="relative"><input id="loginEmail" type="email" name="email" autocomplete="username" autocapitalize="none" spellcheck="false" inputmode="email" placeholder="you@organization.org" class="input-field w-full px-4 py-3 rounded-sm text-sm"></div>
                     </div>
                     <div>
                         <div class="flex items-center justify-between mb-2">
-                            <label class="block text-[0.6875rem] font-medium text-ink-700 dark:text-ink-300 uppercase tracking-wider">Password</label>
+                            <label for="loginPassword" class="block text-[0.6875rem] font-medium text-ink-700 dark:text-ink-300 uppercase tracking-wider">Password</label>
                             <button id="gotoForgot" class="text-[0.6875rem] text-gold-600 hover:text-gold-500 font-medium">Forgot Password?</button>
                         </div>
-                        <input id="loginPassword" type="password" placeholder="Enter your password" class="input-field w-full px-4 py-3 rounded-sm text-sm">
+                        <input id="loginPassword" type="password" name="password" autocomplete="current-password" placeholder="Enter your password" class="input-field w-full px-4 py-3 rounded-sm text-sm">
                         <span class="auth-error" id="loginError"></span>
                     </div>
                     <button id="loginBtn" class="btn-primary w-full py-3 font-semibold text-sm uppercase tracking-wider">Sign In</button>
@@ -451,8 +451,8 @@
             <section id="tab-export" class="tab-content hidden">
                 <div class="export-page max-w-[1000px]">
                     <div class="mb-7">
-                        <h2 class="serif text-[2rem] leading-tight font-bold tracking-tight text-ink-950 dark:text-paper">Export workbooks</h2>
-                        <p class="text-[0.8125rem] text-ink-600 dark:text-ink-400 mt-2">Files download instantly as XLSX workbooks.</p>
+                        <h2 class="serif text-[2rem] leading-tight font-bold tracking-tight text-ink-950 dark:text-paper">Export &amp; print</h2>
+                        <p class="text-[0.8125rem] text-ink-600 dark:text-ink-400 mt-2">Download XLSX workbooks, or preview and print the same figures on paper.</p>
                     </div>
 
                     <div class="grid lg:grid-cols-[290px_minmax(0,1fr)] gap-5 items-start">
@@ -536,6 +536,15 @@
                                             <span class="block mono text-[0.625rem] text-ink-500 dark:text-ink-400 mt-0.5">Month-by-month totals with running YTD position</span>
                                         </span>
                                         <span class="gen-arrow">↓</span>
+                                    </button>
+                                    <p class="flex items-center gap-2.5 mono text-[0.625rem] uppercase tracking-[0.14em] text-ink-500 dark:text-ink-400 pt-2"><span class="inline-block w-5 h-px bg-ink-400"></span>On paper</p>
+                                    <button id="printOpenBtn" class="gen-row group">
+                                        <i data-lucide="printer" class="w-[18px] h-[18px] text-gold-600 dark:text-gold-400 flex-shrink-0"></i>
+                                        <span class="min-w-0 flex-1 text-left">
+                                            <span class="block text-[0.8125rem] font-medium text-ink-950 dark:text-paper">Print</span>
+                                            <span class="block mono text-[0.625rem] text-ink-500 dark:text-ink-400 mt-0.5">Preview, choose paper and print or save as PDF</span>
+                                        </span>
+                                        <span class="gen-arrow">→</span>
                                     </button>
                                 </div>
                                 <p id="exportStatus" class="status-line mt-3"></p>

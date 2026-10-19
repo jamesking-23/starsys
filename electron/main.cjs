@@ -1,7 +1,8 @@
 // Electron main process: opens the built web app (dist/index.html) in a desktop window.
 // The app talks to Supabase over the network exactly like the web version; only the UI,
 // fonts and icons are bundled for offline loading.
-const { app, BrowserWindow, Menu, shell } = require('electron');
+const { app, BrowserWindow, Menu, shell, ipcMain } = require('electron');
+const { register: registerPrinting } = require('./printing.cjs');
 const path = require('path');
 
 // Windows needs this for notifications to show the app name and icon (matches appId in electron-builder.yml).
@@ -21,6 +22,7 @@ function createWindow() {
     autoHideMenuBar: true,
     show: false,
     webPreferences: {
+      preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
@@ -57,6 +59,7 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.whenReady().then(() => {
+    registerPrinting(ipcMain);
     Menu.setApplicationMenu(null);
     createWindow();
     app.on('activate', () => {

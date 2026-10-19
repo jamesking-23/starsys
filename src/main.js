@@ -5,6 +5,7 @@ import '@fontsource/dm-sans/latin-500.css';
 import '@fontsource/dm-sans/latin-600.css';
 import '@fontsource/dm-sans/latin-700.css';
 import '@fontsource/jetbrains-mono/latin-400.css';
+import '@fontsource/jetbrains-mono/latin-700.css';
 import '@fontsource/archivo/latin-700.css';
 import '@fontsource/fraunces/latin-600.css';
 import '@fontsource/fraunces/latin-700.css';
@@ -14,6 +15,8 @@ import ExcelJS from 'exceljs';
 import { refreshIcons } from './icons.js';
 import { createNotifications } from './notifications.js';
 import { createSessionGuard } from './session.js';
+import { createEmailSuggest } from './emailSuggest.js';
+import { createPrint } from './print.js';
 import './ui.js';
 
 // Where password-reset / confirmation e-mails send people back to. On the web that's this page.
@@ -390,6 +393,8 @@ document.getElementById('registerBtn').addEventListener('click', async ()=>{
 });
 
 /* ---------------- LOGIN ---------------- */
+// Remembered e-mail addresses (this device only): suggested when the box is clicked, Enter moves on to the password.
+const emailSuggest = createEmailSuggest({ input: document.getElementById('loginEmail'), next: document.getElementById('loginPassword') });
 document.getElementById('loginPassword').addEventListener('keydown', ev=>{ if(ev.key==='Enter') document.getElementById('loginBtn').click(); });
 document.getElementById('loginBtn').addEventListener('click', async ()=>{
   const email = document.getElementById('loginEmail').value.trim();
@@ -401,6 +406,8 @@ document.getElementById('loginBtn').addEventListener('click', async ()=>{
   btn.disabled=false; btn.textContent='Sign In';
   if(error){ errEl.textContent = 'Incorrect email or password.'; return; }
   sessionGuard.begin(signedIn.user.id);
+  emailSuggest.remember(email);   // only after a successful sign-in
+  document.getElementById('loginPassword').value = '';   // the password has done its job
   try{ await supabase.rpc('record_login'); }catch(e){}
   await routeAfterAuth();
 });
@@ -491,9 +498,12 @@ const sessionGuard = createSessionGuard({
 
 /* ---------------- LOGOUT ---------------- */
 async function fullSignOut(){
-  stopEntriesListener(); stopProfileListener(); stopPresence(); sessionGuard.stop(); notifications.stop();
+  stopEntriesListener(); stopProfileListener(); stopPresence(); sessionGuard.stop(); notifications.stop(); printUI.close();
   try{ await supabase.auth.signOut(); }catch(e){ console.error(e); }   // offline: the local session is still cleared
   currentUser = null;
+  // Do not leave credentials behind for the next person at a shared computer.
+  document.getElementById('loginPassword').value = '';
+  document.getElementById('loginError').textContent = '';
 }
 document.getElementById('logoutBtn').addEventListener('click', async ()=>{ await fullSignOut(); showOverlay('loginOverlay'); });
 document.getElementById('syncNowBtn').addEventListener('click', async ()=>{
@@ -2026,23 +2036,20 @@ function buildDistrictSheet(ws, districtName, churches, months, year, mode, buck
   titleCell.value = districtName.toUpperCase() + ' — FINANCIAL REPORTING (' + (mode==='sunplus'?'SUNPLUS':'MANAGEMENT') + ', ' + year + ')';
   titleCell.font = {bold:true, size:14, color:{argb:'FF163A5A'}};
 
-  // Legend
-  ws.mergeCells(2, 1, 2, totalCols);
-  const legendCell = ws.getRow(2).getCell(1);
-  legendCell.value = 'Enter figures only in the "BY MONTH" table (left) — "BY CHURCH" and "CUMULATIVE SUMMARY" are formulas that update automatically.';
-  legendCell.font = {italic:true, size:9, color:{argb:'FF5C6B7A'}};
+  // Section captions (row 2). These are plain labels; the figures are filled in by the system.
+  const rangeLabel = months.length > 1 ? months[0]+' \u2013 '+months[months.length-1] : months[0];
+  ws.mergeCells(2, col1, 2, col1+w1-1);
+  ws.getRow(2).getCell(col1).value = 'BY MONTH';
+  ws.mergeCells(2, col2, 2, col2+w2-1);
+  ws.getRow(2).getCell(col2).value = 'BY CHURCH';
+  ws.mergeCells(2, col3, 2, col3+w3-1);
+  ws.getRow(2).getCell(col3).value = 'CUMULATIVE SUMMARY ('+rangeLabel+')';
+  [col1,col2,col3].forEach(c=>{ const cell = ws.getRow(2).getCell(c); cell.font = {bold:true, size:10, color:{argb:'FF5C6B7A'}}; });
 
-  // Section captions
-  ws.mergeCells(3, col1, 3, col1+w1-1);
-  ws.getRow(3).getCell(col1).value = 'BY MONTH (enter data here)';
-  ws.mergeCells(3, col2, 3, col2+w2-1);
-  ws.getRow(3).getCell(col2).value = 'BY CHURCH (auto — linked to "By Month")';
-  ws.mergeCells(3, col3, 3, col3+w3-1);
-  ws.getRow(3).getCell(col3).value = 'CUMULATIVE SUMMARY ('+months[0]+' – '+months[months.length-1]+') — auto — linked to "By Church"';
-  [col1,col2,col3].forEach(c=>{ const cell = ws.getRow(3).getCell(c); cell.font = {bold:true, italic:true, size:10, color:{argb:'FF5C6B7A'}}; });
+  const TOP = 4; // first row of every table (row 1 title, row 2 captions, row 3 spacer)
 
   /* ---------- Table 1: by month, rows = churches (the only editable data) ---------- */
-  let r = 5;
+  let r = TOP;
   const monthChurchRow = {}; // monthChurchRow[month][church] = row number of that church's data row in Table 1
   months.forEach(month=>{
     monthChurchRow[month] = {};
@@ -2082,7 +2089,7 @@ function buildDistrictSheet(ws, districtName, churches, months, year, mode, buck
   });
 
   /* ---------- Table 2: by church, rows = months — every cell formula-linked to Table 1 ---------- */
-  let r2 = 5;
+  let r2 = TOP;
   const churchTotalRow = {}; // churchTotalRow[church] = row number of that church's TOTAL row in Table 2
   churches.forEach(church=>{
     const blockStart = r2;
@@ -2122,7 +2129,7 @@ function buildDistrictSheet(ws, districtName, churches, months, year, mode, buck
   });
 
   /* ---------- Table 3: cumulative summary, rows = churches — every cell formula-linked to Table 2 ---------- */
-  let r3 = 5;
+  let r3 = TOP;
   writeRowAt(ws, r3, col3, headerLabelsCumulative());
   styleHeaderRange(ws, r3, col3, w3);
   r3++;
@@ -2146,7 +2153,7 @@ function buildDistrictSheet(ws, districtName, churches, months, year, mode, buck
   for(let ci=col3+1; ci<=col3+w3-1; ci++){ const L=colLetter(ci); const cell = ws.getRow(r3).getCell(ci); cell.value = { formula: 'SUM('+L+firstSum+':'+L+lastSum+')' }; styleFigureCell(cell, {bold:true}); cell.fill = {type:'pattern',pattern:'solid',fgColor:{argb:'FFFFF2CC'}}; }
   ws.getRow(r3).getCell(col3).font = {bold:true};
   ws.getRow(r3).getCell(col3).fill = {type:'pattern',pattern:'solid',fgColor:{argb:'FFFFF2CC'}};
-  addBoxBorder(ws, 5, col3, r3, col3+w3-1);
+  addBoxBorder(ws, TOP, col3, r3, col3+w3-1);
 
   // Column widths: name columns wider, offering/gap columns narrower
   const nameCols = new Set([col1, col2, col3]);
@@ -2260,6 +2267,56 @@ async function exportAllDistricts(mode){
     return await downloadWorkbook(wb, 'Starsys_All_Districts_'+modeLabel(mode)+'_'+year);
   });
 }
+// Cumulative report: one sheet with two tables (by month, by district), all figures formatted with thousands separators.
+function buildCumulativeSheet(ws, months, year, mode, buckets, districtNames){
+  const colCount = 1 + OFFERINGS.length + 1;
+  const rangeLabel = months.length > 1 ? months[0]+' \u2013 '+months[months.length-1] : months[0];
+  const titleRow = ws.addRow(['STARSYS \u2014 CUMULATIVE OFFERTORY REPORT (ALL DISTRICTS) \u2014 '+modeLabel(mode).toUpperCase()+' \u2014 '+year]);
+  ws.mergeCells(titleRow.number,1,titleRow.number,colCount);
+  titleRow.getCell(1).font = {bold:true, size:14, color:{argb:'FF163A5A'}};
+  ws.addRow([]);
+
+  // Helper: write one table (header + rows + grand total) with number formats and a box border.
+  const writeTable = (caption, firstColLabel, rowLabels, sumsFor) => {
+    addMonthBlockHeader(ws, colCount, caption);
+    const hdr = ws.addRow([firstColLabel, ...OFFERINGS.map(o=>o.label), 'Total']);
+    styleHeaderRow(hdr);
+    const blockStart = hdr.number - 1;
+    const firstRow = hdr.number + 1;
+    rowLabels.forEach(label=>{
+      const row = ws.addRow([label, ...sumsFor(label), null]);
+      row.getCell(colCount).value = { formula: 'SUM('+colLetter(2)+row.number+':'+colLetter(colCount-1)+row.number+')' };
+      for(let c=2; c<=colCount; c++) styleFigureCell(row.getCell(c), {bold: c===colCount});
+    });
+    const lastRow = firstRow + rowLabels.length - 1;
+    const grand = ws.addRow(['GRAND TOTAL', ...OFFERINGS.map(()=>null), null]);
+    for(let c=2; c<=colCount; c++){
+      const L = colLetter(c);
+      grand.getCell(c).value = { formula: 'SUM('+L+firstRow+':'+L+lastRow+')' };
+    }
+    grand.eachCell(cell=>{ cell.fill = {type:'pattern',pattern:'solid',fgColor:{argb:'FFFFF2CC'}}; });
+    grand.getCell(1).font = {bold:true};
+    for(let c=2; c<=colCount; c++) styleFigureCell(grand.getCell(c), {bold:true});
+    addBoxBorder(ws, blockStart, 1, grand.number, colCount);
+  };
+
+  writeTable('BY MONTH ('+rangeLabel+')', 'Month', months, (month)=>{
+    const sums = OFFERINGS.map(()=>0);
+    districtNames.forEach(d=> scopedChurches(d).forEach(c=>{
+      OFFERINGS.forEach((o,i)=>{ sums[i] += bucketValue(buckets, d, c, month, year, o.key); });
+    }));
+    return sums;
+  });
+  ws.addRow([]);
+  writeTable('BY DISTRICT ('+rangeLabel+')', 'District', districtNames, (d)=>{
+    const sums = OFFERINGS.map(()=>0);
+    scopedChurches(d).forEach(c=> months.forEach(month=>{
+      OFFERINGS.forEach((o,i)=>{ sums[i] += bucketValue(buckets, d, c, month, year, o.key); });
+    }));
+    return sums;
+  });
+  ws.columns.forEach((col,i)=>{ col.width = i===0?26:14; });
+}
 async function exportCumulative(mode){
   const statusEl = document.getElementById('exportStatus');
   const months = monthRange();
@@ -2271,50 +2328,43 @@ async function exportCumulative(mode){
     const buckets = buildModeBuckets(mode, districtNames);
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet('Cumulative');
-    const colCount = 1 + OFFERINGS.length + 1;
-    const titleRow = ws.addRow(['STARSYS — CUMULATIVE OFFERTORY REPORT (ALL DISTRICTS) — '+modeLabel(mode).toUpperCase()+' — '+year]);
-    ws.mergeCells(titleRow.number,1,titleRow.number,colCount);
-    titleRow.getCell(1).font = {bold:true, size:14, color:{argb:'FF163A5A'}};
-    ws.addRow([]);
-    addMonthBlockHeader(ws, colCount, 'BY MONTH ('+months[0]+' – '+months[months.length-1]+')');
-    const hdr = ws.addRow(['Month', ...OFFERINGS.map(o=>o.label), 'Total']);
-    styleHeaderRow(hdr);
-    const firstRow = hdr.number+1;
-    months.forEach(month=>{
-      let sums = OFFERINGS.map(()=>0);
-      districtNames.forEach(d=> scopedChurches(d).forEach(c=>{
-        OFFERINGS.forEach((o,i)=>{ sums[i]+= bucketValue(buckets, d, c, month, year, o.key); });
-      }));
-      const row = ws.addRow([month, ...sums, null]);
-      row.getCell(colCount).value = { formula: 'SUM('+colLetter(2)+row.number+':'+colLetter(colCount-1)+row.number+')' };
-    });
-    const lastRow = firstRow + months.length - 1;
-    const grand = ws.addRow(['GRAND TOTAL', ...OFFERINGS.map(()=>null), null]);
-    for(let cIdx=2; cIdx<=colCount; cIdx++){ const L=colLetter(cIdx); grand.getCell(cIdx).value = { formula:'SUM('+L+firstRow+':'+L+lastRow+')' }; }
-    grand.eachCell(c=>{ c.font={bold:true}; c.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFFFF2CC'}}; });
-    ws.addRow([]);
-
-    addMonthBlockHeader(ws, colCount, 'BY DISTRICT ('+months[0]+' – '+months[months.length-1]+')');
-    const hdr2 = ws.addRow(['District', ...OFFERINGS.map(o=>o.label), 'Total']);
-    styleHeaderRow(hdr2);
-    const firstRow2 = hdr2.number+1;
-    districtNames.forEach(d=>{
-      let sums = OFFERINGS.map(()=>0);
-      scopedChurches(d).forEach(c=> months.forEach(month=>{
-        OFFERINGS.forEach((o,i)=>{ sums[i]+= bucketValue(buckets, d, c, month, year, o.key); });
-      }));
-      const row = ws.addRow([d, ...sums, null]);
-      row.getCell(colCount).value = { formula: 'SUM('+colLetter(2)+row.number+':'+colLetter(colCount-1)+row.number+')' };
-    });
-    const lastRow2 = firstRow2 + districtNames.length - 1;
-    const grand2 = ws.addRow(['GRAND TOTAL', ...OFFERINGS.map(()=>null), null]);
-    for(let cIdx=2; cIdx<=colCount; cIdx++){ const L=colLetter(cIdx); grand2.getCell(cIdx).value = { formula:'SUM('+L+firstRow2+':'+L+lastRow2+')' }; }
-    grand2.eachCell(c=>{ c.font={bold:true}; c.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFFFF2CC'}}; });
-
-    ws.columns.forEach((col,i)=>{ col.width = i===0?26:14; });
+    buildCumulativeSheet(ws, months, year, mode, buckets, districtNames);
     return await downloadWorkbook(wb, 'Starsys_Cumulative_report_'+modeLabel(mode)+'_'+year);
   });
 }
+
+/* ============================================================
+   PRINT — see src/print.js. Uses the same bucketing as the Excel exports, so paper and workbook always agree.
+   ============================================================ */
+const printUI = createPrint({
+  MONTHS, refreshIcons, modeLabel,
+  offerings: ()=> OFFERINGS,
+  districtNames: ()=> scopedDistrictNames(),
+  churchesOf: (d)=> scopedChurches(d),
+  years: ()=> Array.from(exportYear.options).map(o=>o.value),
+  initial: ()=> ({ district: exportDistrict.value, year: exportYear.value, from: rangeFrom.value, to: rangeTo.value, basis: exportBasis }),
+  buildData: (basis, names)=>{
+    verifyExportParity(names);
+    const buckets = buildModeBuckets(basis, names);
+    return {
+      value: (d,c,m,y,key)=> bucketValue(buckets, d, c, m, y, key),
+      serial: (d,c,m,y)=>{ const e = state[keyFor(d,c,m,y)]; return e && e.serialNo ? String(e.serialNo) : ''; }
+    };
+  },
+  userName: ()=> (currentUser && currentUser.full_name) || '',
+  fontsReady: async ()=>{
+    try{ await Promise.all(['400 12px "DM Sans"','600 12px "DM Sans"','700 12px "DM Sans"','400 12px "JetBrains Mono"','700 12px "JetBrains Mono"','700 12px "Fraunces"'].map(f=>document.fonts.load(f))); }catch(e){ /* fall back to system fonts */ }
+  },
+  desktop: window.starsysDesktop || null,
+  canSavePdf: ()=> !!(window.starsysDesktop && window.starsysDesktop.savePdf)
+});
+document.getElementById('printOpenBtn').addEventListener('click', (ev)=>{ printUI.open({ opener: ev.currentTarget }); });
+// Ctrl/Cmd+P opens the print screen (the browser's own print would print the whole app window, which is never wanted).
+document.addEventListener('keydown', (ev)=>{
+  if(!(ev.ctrlKey || ev.metaKey) || ev.key.toLowerCase() !== 'p' || !currentUser) return;
+  ev.preventDefault();
+  if(printUI.isOpen) printUI.print(); else printUI.open();
+});
 
 document.getElementById('exportOneBtn').addEventListener('click', ()=> exportOneDistrict(exportBasis));
 document.getElementById('exportAllBtn').addEventListener('click', ()=> exportAllDistricts(exportBasis));

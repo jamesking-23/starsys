@@ -20,6 +20,7 @@ Excel export.
 - Activity log and audit trail of every administrative action
 - Time-boxed **support access** grants, revocable by the super admin
 - **Notification Center**: a live bell with to-dos you can act on, grouped updates, monthly milestones and an optional desktop alert (see below)
+- **Print**: a print screen with live preview, laid out for paper (A4 by default), page ranges, and Save as PDF in the desktop app (see below)
 - **Session security**: 30 minute idle timeout with a countdown, 12 hour hard limit, safe across sleep, shutdown and restart (see below)
 - Excel export of reports; realtime updates; light/dark mode; adjustable text size (100–120%)
 
@@ -87,6 +88,29 @@ The bell in the top bar opens a panel that is built entirely from data the signe
 Read/dismissed/snoozed state and preferences are stored in the browser (localStorage) per user, so they do not
 follow someone to another device.
 
+## Print
+
+**Export & print → Print** (or **Ctrl/Cmd+P**) opens a print screen modelled on Excel's: settings on the left, the actual
+pages on the right. It is not the Excel layout copied onto paper (that is three tables side by side, 45+ columns wide):
+
+- Tables are **stacked vertically** and the text size (10 pt down to 6 pt) is chosen so every column fits the page width.
+  Gaps between columns tighten before the text shrinks. If a report is still too wide you get a warning; a larger paper
+  size (A3) or landscape fixes it. Wide reports pick landscape automatically.
+- Every page has a header and footer (date, person, basis, **Page 3 of 9**). A table that continues onto the next page
+  repeats its column headings and is marked "(continued)". A total row is never left alone on a page.
+- The preview shows the **same pages that print** (the app paginates itself, so what you see is what you get), with page
+  navigation and zoom. A page range (like Excel's) prints only some pages.
+- Three reports: **One district** (cumulative summary, one table per month, optionally one per church), **All districts**
+  (a consolidated summary, then every district) and **Cumulative** (by month and by district). Figures come from the same
+  bucketing code as the Excel exports, so paper and workbook always agree.
+- Options: paper size (A4, Letter, Legal, A3), orientation (auto/portrait/landscape), margins, header and footer, row
+  shading, zero as a dash, compact rows. The last choices are remembered on the device.
+- **Desktop app:** *Print* opens the system print dialog (printer, copies) and *Save as PDF* writes a PDF directly, which
+  helps when no printer is connected. In a browser, the browser's print window offers the same, including *Save as PDF*.
+
+The code is in `src/print.js` (engine and screen) and `electron/printing.cjs` + `electron/preload.cjs` (desktop bridge,
+which exposes only `print` and `savePdf` and validates everything it is sent).
+
 ## Sessions and sign-in security
 
 Signing in lasts until the first of two limits (set at the top of `src/session.js`):
@@ -102,6 +126,10 @@ while it is open. A saved login that is past either limit is ended before the ap
 why. The first mouse move after waking cannot revive an expired session. A clock set backwards, a record from a different
 user, or no record at all (a login saved before this policy existed) also ends the session. All windows share the record,
 so activity in one keeps the others alive and signing out in one signs out the rest.
+
+Signing in also helps people on shared computers: the sign-in box offers **email addresses used on this device** (never
+passwords; each has a × to forget it, five are kept), Enter in the email box moves on to the password, and the password
+box is cleared on sign-out and after signing in.
 
 This is enforced in the browser/app. For a server-side backstop, also set it in Supabase: **Authentication → Sessions →
 Time-box user sessions** (12 hours) and **Inactivity timeout** (30 minutes). These need the Pro plan; they end the
