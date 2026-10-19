@@ -6,7 +6,8 @@ directories:
   output: release
 
 # Only the built web app, the Electron entry point and the window icon go into the package.
-# (Everything the UI needs is already bundled into dist/, so no node_modules are shipped.)
+# (Vite bundles every library the UI needs into dist/, so the libraries are build-time devDependencies and
+# electron-builder ships no node_modules. Only add something to "dependencies" if electron/*.cjs requires it.)
 files:
   - dist/**
   - electron/**
